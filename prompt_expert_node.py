@@ -39,7 +39,7 @@ class PromptExpertNode:
         self.output_dir = "outputs/prompt_expert"
         os.makedirs(self.output_dir, exist_ok=True)
 
-    def process_prompt(self, input_text, input_fanyi, input_tishici, api_type, api_key, ollama_api_url, model_name, target_language):
+    def process_prompt(self, target_type, input_text, input_fanyi, input_tishici, api_type, api_key, ollama_api_url, model_name, target_language):
         if target_type == "翻译" :
             system_prompt = input_fanyi
         else:
@@ -61,7 +61,7 @@ class PromptExpertNode:
 
             self._save_output(input_text, clean_output, translated_output)
 
-            if '翻译' in input_text:
+            if target_type == "翻译" :
                 return (translated_output,)
             else:
                 return ("(masterpiece:1.0), (highest quality:1.12), (HDR:1.0), synchronization, detailed, realistic, 8k uhd, high quality " + clean_output,)
@@ -131,32 +131,48 @@ class PromptExpertNode:
             raise Exception(f"无法连接到Ollama API ({api_url}): {str(e)}")
 
     def _clean_output(self, text):
+        """
+        清理输出内容，移除引号、think部分和其他多余格式
+        """
+        # 移除开头和结尾的引号
         text = text.strip()
-        text = re.sub(r'</think>', '', text, flags=re.DOTALL)
+        # 删除 <think> 标签及其内容
+        text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+        # 删除中文双引号
         text = re.sub(r'[“”]', '', text)
         if text.startswith('"') and text.endswith('"'):
             text = text[1:-1]
         elif text.startswith("'") and text.endswith("'"):
             text = text[1:-1]
-        think_pattern = r'^think\s*:.*?(?=\n|\Z)'
+
+        # 移除think部分
+        think_pattern = r'^think\s*:.*?(?=\n\n|\Z)'
         text = re.sub(think_pattern, '', text, flags=re.DOTALL | re.IGNORECASE)
+
+        # 移除markdown格式的代码块
         text = re.sub(r'```.*?```', '', text, flags=re.DOTALL)
-        text = re.sub(r'\n{3,}', '\n', text)
+
+        # 移除多余的空行
+        text = re.sub(r'\n{3,}', '\n\n', text)
+
         return text.strip()
 
     def _save_output(self, input_text, output, translation=None):
+        """保存输入和输出到文本文件，以便日后参考"""
         try:
             import time
             timestamp = time.strftime("%Y%m%d-%H%M%S")
             filename = os.path.join(self.output_dir, f"prompt_{timestamp}.txt")
+
             with open(filename, "w", encoding="utf-8") as f:
                 f.write("=== 输入 ===\n")
-                f.write(input_text + "\n")
+                f.write(input_text + "\n\n")
                 f.write("=== 输出 ===\n")
                 f.write(output)
                 if translation and translation != output:
-                    f.write("\n=== 中文翻译 ===\n")
+                    f.write("\n\n=== 中文翻译 ===\n")
                     f.write(translation)
+
             print(f"已保存提示词到: {filename}")
         except Exception as e:
             print(f"保存提示词时出错: {str(e)}")
